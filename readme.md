@@ -13,7 +13,7 @@ This script will install kubernetes and SQL Big Data Cluster
 The following is the paramemters of this script
 <pre>
 Usage:
-    ./setup-bdc.sh -m `<mode`> -u `<k8s_user`> -l \<local_storage_path\> -k \<kubelet_storage\> -d \<docker_storage\> -s \<storage_class\> -o \<bdc-config-optio\n> -n \<network-plugin\>
+    ./setup-bdc.sh -m ``<mode``> -u `<k8s_user`> -l \<local_storage_path\> -k \<kubelet_storage\> -d \<docker_storage\> -s \<storage_class\> -o \<bdc-config-optio\n> -n \<network-plugin\>
 
     -m mode [destroy-all|reset-all|reset-single|reset-master|reset-worker|single|''(default)]
     -u k8s-user [any-name|k8s(default)]
