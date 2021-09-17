@@ -9,7 +9,7 @@ This script will install kubernetes and SQL Big Data Cluster
 - it covers networking orchestrations such as: Calico, Flannel, Cilium and weave (NOTE: Flannel that works everytime, others need tweakings)
 - Check DOCKER_TAG for latest BDC version, by the time i wrote this, the image has DOCKER_TAG="2019-CU8-ubuntu-16.04"
 
-### Installing BDC
+### Installing SQL BDC
 The following is the paramemters of this script
 <pre>
 Usage:
@@ -38,3 +38,5 @@ Usage:
          ./setup-bdc.sh -m reset-master -u kuser -d /opt/docker #the rest parameters will be using default values
 
 </pre>
+
+## Setup/Install Kubernetes and docker community edition version
