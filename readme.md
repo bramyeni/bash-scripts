@@ -54,7 +54,7 @@ There still some known issues when using calico, therefore you either use flanne
 
 <pre>
 Usage:
-    ./setup-k8scrio.sh -m <mode> -u <k8s_user> -l <local_storage_path> -k <kubelet_storage> -d <docker_storage> -s <storage_class> -n <network-plugin>
+    ./setup-k8scrio.sh -m [mode] -u [k8s_user] -l [local_storage_path] -k [kubelet_storage] -d [docker_storage] -s [storage_class] -n [network-plugin]
 
     -m mode [reset-all|destroy-all|reset-single|reset-master|reset-worker|single|''(default)]
     -u k8s-user [any-name|k8s(default)]
