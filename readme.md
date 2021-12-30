@@ -40,3 +40,42 @@ Usage:
 </pre>
 
 ## Setup/Install Kubernetes and docker community edition version
+This script will install kubernetes cluster (master and its wokers) into Linux VM (supported: Redhat/Centos, suse, ubuntu, debian, arch linux)
+
+### Installing kubernetes master
+NOTES:
+setup-k8scrio.sh will install kubernetes with cri-o runtime 
+setup-k8stiny.sh will install kubernetes with containerd runtime
+setup-k8s.sh will install kubernetes with docker runtime (including docker-ce package)
+All parameters are the same between 3 scripts above
+The parameter docker-storage on setup-k8scrio.sh and setup-kstiny.sh have been removed (i will modify this later as parameter to relocate ephemral disk of cri-o and containerd)
+There still some known issues when using calico, therefore you either use flannel or weave (will add some other network plugins in the future such as cilium, etc)
+
+
+<pre>
+Usage:
+    ./setup-k8scrio.sh -m <mode> -u <k8s_user> -l <local_storage_path> -k <kubelet_storage> -d <docker_storage> -s <storage_class> -n <network-plugin>
+
+    -m mode [reset-all|destroy-all|reset-single|reset-master|reset-worker|single|''(default)]
+    -u k8s-user [any-name|k8s(default)]
+
+    -l local-storage [any-mountpoint|/mnt/local-storage(default)]
+    -k kubelet-storage [any-mountpoint|/var/lib/kubelet(default)]
+
+    -d docker-storage [any-mountpoint|/var/lib/docker(default)]
+    -s storageclass [any-storageclass|local-storage]
+
+    -n network [f flannel|c calico(default)]
+    E.g: ./setup-k8scrio.sh -m reset-single -u kube -l /opt/local-storage -k /opt/kubelet -d /opt/docker -n f
+         ./setup-k8scrio.sh -m reset-master -u kube -l /opt/local-storage -d /opt/docker -s csi-rbd-ceph #using storageclass csi-rbd-ceph and calico network(default)
+         ./setup-k8scrio.sh -m reset-master -u kuser -d /opt/docker #the rest parameters will be using default values
+       
+
+ </pre>
+
+### Issues on calico
+Anyone can participate to fix this issue, based on my observations the following are the current issues:
+1. all nodes are in Ready state, but when you create a pod in any worker node, for some reason it cant connect to coredns, it stills ping-able to outside word but i cant perform any apt update from within the pod and unable to ping to let say www.google.com
+2. all nodes are in Ready state for all linux distros except centos (which i believe happens to redhat too), so when installing centos as a worker node, the node always in not-ready state
+3. it seems minimum TLS 1.2 doesnt work properly with kubernetes, so this will impact debian 10 onwards and centos/redhat 8 onwards, therefore i must change the minimum TLS which originally defaulted to TLS 1.2 to TLS 1.1 (i am not sure whether this is fixed or not with kubernetes 1.20 onwards). there is a piece of codes in the script that alter this TLS from 1.2 to minimum 1.1
+
