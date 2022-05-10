@@ -20,7 +20,9 @@ Reolocate /var/lib/container => /opt/container
 Size of /opt = 32GB (all ephemeral storage will be allocated here)
 </pre>
 #### Run the installation
+<pre>
 ./setup-k8sfullcrio.sh -u k8s -k /opt/kubelet -c /opt/container -n c
+</pre>
 NOTE: must run the above script on master node
 
 #### Script routines
