@@ -10,6 +10,7 @@ This script will install cluster on Master node, then it automatically ssh to wo
 
 ### Installing Kubernetes Cluster with 1 master and 100 worker nodes
 #### Assumptions: 
+<pre>
 K8SMASTER = lxk8smaster
 K8SNODE = lxk8sworker
 NOOFWORKERS = 100
@@ -17,7 +18,7 @@ networking using calico
 Relocate /var/lib/kubelet => /opt/kubelet
 Reolocate /var/lib/container => /opt/container
 Size of /opt = 32GB (all ephemeral storage will be allocated here)
-
+</pre>
 #### Run the installation
 ./setup-k8sfullcrio.sh -u k8s -k /opt/kubelet -c /opt/container -n c
 NOTE: must run the above script on master node
