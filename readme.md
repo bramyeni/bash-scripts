@@ -1,6 +1,40 @@
 # My bash script collections
 
-## Setup BDC single and multi nodes
+## Setup Fully automated Kubernetes Cluster Master and X number of Worker nodes
+This script will install cluster on Master node, then it automatically ssh to woker nodes and join the cluster. The number of worker nodes can be as many as you like
+
+### Pre-requisites
+- The Rule of worker node's name must have a base name (E.g: lxk8snode) which will be stored into env variable K8SNODE and then no of worker nodes (E.g: 100) which will be stored into env variable NOOFWORKERS
+- The worker nodes must all be running and the login credential password must all be the same on all those 100 worker nodes and this login must have sudo root
+- The parameter will be similar to setup-k8scrio.sh script
+
+### Installing Kubernetes Cluster with 1 master and 100 worker nodes
+#### Assumptions: 
+K8SMASTER = lxk8smaster
+K8SNODE = lxk8sworker
+NOOFWORKERS = 100
+networking using calico
+Relocate /var/lib/kubelet => /opt/kubelet
+Reolocate /var/lib/container => /opt/container
+Size of /opt = 32GB (all ephemeral storage will be allocated here)
+
+#### Run the installation
+./setup-k8sfullcrio.sh -u k8s -k /opt/kubelet -c /opt/container -n c
+NOTE: must run the above script on master node
+
+#### Script routines
+- Check all worker nodes are up and running
+- Prompts for any required information if the above environment variables are not set
+- The answers for all the above prompts will be stored into a file, so it can be sourced when script is re-run (due to failure)
+- Login to a woker node using username and password which were prompted in previous step (password is encoded when it is stored into a file)
+- The above login since it has sudo access therefore it will copy authorized_keys into root user, so master is able to establish root passwordless connection to all worker nodes
+- Perform kubernetes cluster install on master (lxk8smaster)
+- Perform kubernetes cluster install sequentially on all worker nodes (lxk8snode1, lxk8snode2 .... lxk8snode100)
+- Display kubectl get nodes result
+- Delete the nvironment variable's file when it is completed successfully
+
+
+## Setup BDC single and multi nodes (SQL BDC is going to be EOL)
 This script will install kubernetes and SQL Big Data Cluster
 
 ### Pre-requisites
