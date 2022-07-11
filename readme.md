@@ -9,6 +9,7 @@ This script does the following:
 - Auto resolve issues with cgroup v2 by altering grub parameter, run grub-mkconfig/update-grub then reboot the node
 - Auto reboot all nodes on the cluster to resolve issues when switching container runtime from containerd to crio or vice versa
 - Prompt for master node, commad-separated worker nodes, or worker node with basename with sequential numbers
+- Automatically detects distro such as Arch linux, Debian, Ubuntu, Centos and Suse (the updated script is tested on all distros except Suse)
 
 ### Pre-requisites
 - Script must be copied to master node and must be run from master node
