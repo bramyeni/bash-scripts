@@ -1,12 +1,19 @@
 # My bash script collections
 
 ## Setup Fully automated Kubernetes Cluster Master and X number of Worker nodes
-This script will install cluster on Master node, then it automatically ssh to woker nodes and join the cluster. The number of worker nodes can be as many as you like
+This script does the following:
+- Install Kubernetes cluster on Master node, then it automatically ssh to woker nodes and join the cluster. The number of worker nodes can be as many as you like
+- Choose container runtime either containerd or crio
+- Run in debug mode
+- Relocated /var/lib/kubelet, /var/lib/containers, /var/lib/containerd , /run/containers, /run/containerd to other filesystem
+- Auto resolve issues with cgroup v2 by altering grub parameter, run grub-mkconfig/update-grub then reboot the node
+- Auto reboot all nodes on the cluster to resolve issues when switching container runtime from containerd to crio or vice versa
+- Prompt for master node, commad-separated worker nodes, or worker node with basename with sequential numbers
 
 ### Pre-requisites
-- The Rule of worker node's name must have a base name (E.g: lxk8snode) which will be stored into env variable K8SNODE and then no of worker nodes (E.g: 100) which will be stored into env variable NOOFWORKERS
-- The worker nodes must all be running and the login credential password must all be the same on all those 100 worker nodes and this login must have sudo root
-- The parameter will be similar to setup-k8scrio.sh script
+- Script must be copied to master node and must be run from master node
+- The worker nodes must all be running and the login credential password must all be the same on all those N number of worker nodes and this login must have permission to sudo to root
+- The parameter is quite similar to setup-k8stiny.sh
 
 ### Installing Kubernetes Cluster with 1 master and 100 worker nodes
 #### Assumptions: 
@@ -21,21 +28,38 @@ Size of /opt = 32GB (all ephemeral storage will be allocated here)
 </pre>
 #### Run the installation
 <pre>
-./setup-k8sfullcrio.sh -u k8s -k /opt/kubelet -c /opt/container -n c
+./setup-k8sfull.sh -u k8s -k /opt/kubelet -c /opt/container -n c
 </pre>
-NOTE: must run the above script on master node
+NOTE: By default it will use containerd as container runtime unless it is specified otherwise
+<pre>
+./setup-k8sfull.sh -u k8s -k /opt/kubelet -c /opt/container -r crio -n w -d
+</pre>
+NOTE: the above parameter will 
+- Create a user k8s (kubectl can be run under this user)
+- Relocate /var/lib/kubelet to /opt/kubelet
+- Relocate /var/lib/containers (default for crio) to /opt/container
+- Run on container runtime CRIO
+- Using network plugin Weave
+- Run in debug mode
+
 
 #### Script routines
 - Check all worker nodes are up and running
 - Prompts for any required information if the above environment variables are not set
 - The answers for all the above prompts will be stored into a file, so it can be sourced when script is re-run (due to failure)
 - Login to a woker node using username and password which were prompted in previous step (password is encoded when it is stored into a file)
-- The above login since it has sudo access therefore it will copy authorized_keys into root user, so master is able to establish root passwordless connection to all worker nodes
+- The above login since it has sudo access therefore it will copy authorized_keys into root user, so master is able to establish connection to worker nodes without password
 - Perform kubernetes cluster install on master (lxk8smaster)
 - Perform kubernetes cluster install sequentially on all worker nodes (lxk8snode1, lxk8snode2 .... lxk8snode100)
+- The script will detect whether master or worker nodes are strickly running cgroup v2, then it will alter the grub parameter to have backward compatibility to cgroup v1 then reboot the nodes (master node first then script will modify the grub, reboot then waiting until the worker nodes become available then resume the script)
 - Display kubectl get nodes result
-- Delete the nvironment variable's file when it is completed successfully
+- Check if Pods stuck wit PodCreating then it will reboot the nodes to resolve the problem (this happens when switching container runtime from containerd to crio or vice versa)
 
+NOTE:
+There is a known issue with Kubernetes v1.24 running on cgroup v2,for some reason coredns pods stuck in Pending state and network plugin pod stuck in crashloopback. This applies to new Linux OS such as Ubuntu v22, Arch Linux, Debian 11 or later. The script will identify this issue by checking /etc/mtab and check whether cgroup and cgroup2 are both available, if not then it will add parameter systemd.unified_cgroup_hierarchy=0 on /etc/deefault/grub
+
+## Setup Kubernetes cluster master node, worker node one at a time
+This script must be run on every node (master, worker node1, node2, etc). Apart from that it has quite similar feature as the above script
 
 ## Setup BDC single and multi nodes (SQL BDC is going to be EOL)
 This script will install kubernetes and SQL Big Data Cluster
