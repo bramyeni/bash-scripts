@@ -59,6 +59,8 @@ NOTE: the above parameter will
 NOTE:
 There is a known issue with Kubernetes v1.24 running on cgroup v2,for some reason coredns pods stuck in Pending state and network plugin pod stuck in crashloopback. This applies to new Linux OS such as Ubuntu v22, Arch Linux, Debian 11 or later. The script will identify this issue by checking /etc/mtab and check whether cgroup and cgroup2 are both available, if not then it will add parameter systemd.unified_cgroup_hierarchy=0 on /etc/deefault/grub
 
+======================================================================================================================================================================
+
 ## Setup Kubernetes cluster master node, worker node one at a time
 This script must be run on every node (master, worker node1, node2, etc). Apart from that it has quite similar feature as the above script
 
