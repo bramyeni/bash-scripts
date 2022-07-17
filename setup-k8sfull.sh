@@ -1,10 +1,10 @@
 #!/bin/bash
-# $Id: setup-k8sfullcrio.sh 454 2022-06-11 04:02:18Z bpahlawa $
+# $Id: setup-k8sfull.sh 460 2022-07-17 05:05:47Z bpahlawa $
 # initially captured from Microsoft website
 # $Author: bpahlawa $
 # Modified by: bpahlawa
-# $Date: 2022-06-11 12:02:18 +0800 (Sat, 11 Jun 2022) $
-# $Revision: 454 $
+# $Date: 2022-07-17 13:05:47 +0800 (Sun, 17 Jul 2022) $
+# $Revision: 460 $
 
 
 trap exitshell SIGINT SIGTERM
@@ -17,15 +17,18 @@ CURRDIR=$(pwd)
 
 exitshell()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    echo -e "${NORMALFONT}Cancelling script....exiting....."
    stty sane
    exit 0
+set +x
 }
 
 export THEUSER="${KUBE_USER:-k8s}"
 export DEBUG=""
 export CRIUSED="${CRI:-containerd}"
 export RUNCONTAINERS="/run/containers"
+export K8SVERPARAM=""
 export SCRIPTDIR=`dirname $0` && [[ "$SCRIPTDIR" = "." ]] && SCRIPTDIR=`pwd`
 export KUBEPARAMINIT="--pod-network-cidr=10.244.0.0/16"
 export DEFAULT_STORAGE="/mnt/local-storage"
@@ -50,6 +53,7 @@ export RETRY_INTERVAL=5
 
 enter_input()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    local QUESTION="$1"
    local HIDDEN="$2"
    if [ "$HIDDEN" != "" ]
@@ -60,20 +64,23 @@ enter_input()
       read -p "=> : " ANS
    fi
    export ANS
+set +x
 }
 
 is_running()
 { 
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    local HOST="$1"
    ping -V 2>/dev/null 1>/dev/null
    [[ $? -ne 0 ]] && install_pkg iputils-ping
    ping -c1 $HOST 1>/dev/null 2>/dev/null
    return $?
+set +x
 }
 
 is_service_active()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    local SVC="$1"
    TIMEOUT=60
    while true ; do
@@ -84,7 +91,7 @@ is_service_active()
        fi
 
        systemctl is-active --quiet $SVC
-       if [ $? -eq 0 ]
+       if [ $? -eq 0 -o $SVC = "kubelet" ]
        then
           echo "Service $SVC is now active...."
           return
@@ -96,10 +103,22 @@ is_service_active()
 set +x
 }
 
+workernodes_csv()
+{
+    local K8SNODE="$1"
+    local NOOFWORKERS="$2"
+    CNT=1
+    while [ $CNT -le $NOOFWORKERS ]
+    do
+       [[ $CNT -lt $NOOFWORKERS ]] && ALLWORKERS="${ALLWORKERS}${K8SNODE}${CNT}," || ALLWORKERS="${ALLWORKERS}${K8SNODE}${CNT}"
+       CNT=$(( CNT + 1 ))
+    done
+    export ALLWORKERS
+}
 
 check_master_worker()
 { 
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
   [[ -f $ENVFILE ]] && source $ENVFILE
   if [ "$K8SMASTER" = "" ]
   then
@@ -120,32 +139,37 @@ check_master_worker()
 	     [[ "$NOOFWORKERS" = "" ]] && enter_input "Please specify no of worker nodes (this is ignored if  worker nodes are listed as comma separated!!)"
 	     NOOFWORKERS="$ANS"
              ALLWORKERS=""
-             CNT=1
-             while [ $CNT -le $NOOFWORKERS ]
-             do
-	        [[ $CNT -lt $NOOFWORKERS ]] && ALLWORKERS="${ALLWORKERS}${K8SNODE}${CNT}," || ALLWORKERS="${ALLWORKERS}${K8SNODE}${CNT}"
-                CNT=$(( CNT + 1 ))
-             done
+	     workernodes_csv "$K8SNODE" "$NOOFWORKERS"
              sed -i "s/^export K8SNODE=.*/export K8SNODE=\"$ALLWORKERS\"/" $ENVFILE
 	  fi
   fi
 
-     OLDIFS="$IFS"
+  if [ "$NOPROMPT" = "1" ]
+  then
+     if [ "$NOOFWORKERS" != "" ]
+     then
+        workernodes_csv "$K8SNODE" "$NOOFWORKERS"
+        K8SNODE="$ALLWORKERS"
+     fi
+  else
      K8SNODE=$(grep "^export K8SNODE" $ENVFILE | cut -f2 -d"=" | sed 's/"//g')
-     IFS=',' read -r -a K8SNODES <<< "$K8SNODE" 
-     for WKNODE in "${K8SNODES[@]}"
-     do
-	 is_running $WKNODE
-	 [[ $? -ne 0 ]] && echo "Worker node ${WKNODE} is not running.., all worker nodes must be running!!.. exiting.." && [[ -f $ENVFILE ]] && rm -f $ENVFILE && exit 1 || echo "Worker Node ${WKNODE} is alive !"
-     done
-     IFS="$OLDIFS"
+  fi
+  OLDIFS="$IFS"
+  IFS=',' read -r -a K8SNODES <<< "$K8SNODE" 
+  IFS="$OLDIFS"
+
+  for WKNODE in "${K8SNODES[@]}"
+  do
+     is_running $WKNODE
+     [[ $? -ne 0 ]] && echo "Worker node ${WKNODE} is not running.., all worker nodes must be running!!.. exiting.." && [[ -f $ENVFILE ]] && rm -f $ENVFILE && exit 1 || echo "Worker Node ${WKNODE} is alive !"
+  done
 set +x
 }
 
     
 get_distro_version()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    if [ -f /etc/os-release ]
    then
       ALLVER=`sed -n ':a;N;$bb;ba;:b;s/.*VERSION_ID="\([0-9\.]\+\)".*/\1/p' /etc/os-release`
@@ -191,7 +215,7 @@ touch $PROGRESS_FILE
 
 set_crio_cgroup_manager()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
     echo "Checking whether crio.runtime has cgroup_manager set to systemd...."
     if [ -d "/etc/crio" ]
     then
@@ -219,6 +243,7 @@ set +x
 
 add_crio_netconfig()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
 
    if [ -d /etc/crio/crio.conf.d ]
    then
@@ -248,12 +273,13 @@ plugin_dirs = [
 
          echo "Added crio.network into /etc/crio/crio.conf.d/10-crio-network.conf"
    fi
+set +x
 }
 
 
 reset_kubeadm()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    rm -rf /etc/cni
    rm -rf /etc/kubernetes
    rm -rf /var/lib/cni
@@ -314,7 +340,7 @@ set +x
 
 add_grub_param()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    local PARAM="$1"
    if [ -d /etc/default/grub.d ]
    then
@@ -334,22 +360,26 @@ add_grub_param()
    case "$DISTRO" in
     "CENTOS"|"RHEL")
             grub2-mkconfig -o /boot/grub/grub.cfg
+            CHECKIT=$(find /boot/grub -type f -exec grep "$PARAM" {} \;)
             ;;
 
     "UBUNTU")
             update-grub 
+            CHECKIT=$(find /boot/grub -type f -exec grep "$PARAM" {} \;)
             ;;
     "ARCH")
             grub-mkconfig -o /boot/grub/grub.cfg
+            CHECKIT=$(find /boot/grub -type f -exec grep "$PARAM" {} \;)
             ;;
     "DEBIAN")
 	    update-grub
+            CHECKIT=$(find /boot/grub -type f -exec grep "$PARAM" {} \;)
             ;;
-    "SUSE")
-            zypper -n in $PKGNAME
+    *SUSE*)
+            grub2-mkconfig -o /boot/grub2/grub.cfg
+            CHECKIT=$(find /boot/grub2 -type f -exec grep "$PARAM" {} \;)
             ;;
     esac
-    CHECKIT=$(find /boot/grub -type f -exec grep "$PARAM" {} \;)
     [[ "$CHECKIT" != "" ]] && return 0 || return 1
 
 set +x
@@ -357,7 +387,7 @@ set +x
 
 check_cgroup_v2()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    CGRPV1=$(grep "^cgroup " /etc/mtab | awk '{print $1}' | uniq | wc -l)
    if [ $CGRPV1 -eq 0 ]
    then
@@ -385,7 +415,7 @@ set +x
 
 remove_mountpoints()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    for MNTPOINT in `mount | egrep "/var/lib/containers|/run/containers|/var/lib/containerd|/run/containerd|${CONTAINERSTORAGE:-/var/lib/containers}|${KUBESTORAGE:-/var/lib/kubelet}|${CONTAINERSTORAGE:-/var/lib/containers}/../run${RUNCONTAINERSUB}|${RUNCONTAINERS:-/run/containers}|utsns|ipcns|netns" | awk '{print $3}' | sort -r`
    do
       echo "Unmounting $MNTPOINT"
@@ -397,24 +427,21 @@ set +x
 
 destroy_everything()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
 echo "#########################################################################"
 echo "####### Destroying and Uninstalling Kubernetes and its components #######"
 echo "#########################################################################"
    KUBEPID=$(ps -eo pid,cmd | grep "bin/kubelet" | grep -v grep | awk '{print $1}')
    [[ "$KUBEPID" != "" ]] && echo "Killing kubelet..." && systemctl stop kubelet && kill -9 $KUBEPID 2>/dev/null 1>/dev/null
-   CRIOPARAM=$(ps -ef | egrep "containerd.sock|crio.sock" | grep -v grep | sed 's/.*\(\/run.*\(containerd.sock\|crio.sock\)\).*/ \1 /g' | grep -v "\*" | tail -1)
-   if [ "$CRIOPARAM" != "" ]
-   then
-      CRIOPARAM="--cri-sock unix:///$CRIOPARAM"
-   fi
+   get_cri_param
 
-   kubeadm reset ${KUBEADMARG} -f <<EOF
+   kubeadm reset ${CRIPARAM} -f <<EOF
 y
 EOF
-   [[ -f /lib/systemd/system/containerd.service ]] && systemctl stop containerd
-   [[ -f /lib/systemd/system/crio.service ]] && systemctl stop crio
-   [[ -f /lib/systemd/system/dokcer.service ]] && systemctl stop docker
+   [[ -f /lib/systemd/system/containerd.service || -f /usr/lib/systemd/system/containerd.service ]] && systemctl stop containerd
+   [[ -f /lib/systemd/system/crio.service || -f /usr/lib/systemd/system/crio.service ]] && systemctl stop crio
+   [[ -f /lib/systemd/system/dokcer.service || -f /usr/lib/systemd/system/dokcer.service ]] && systemctl stop docker
+
    iptables -F && iptables -t nat -F && iptables -t mangle -F && iptables -X
    which nft
    [[ $? -eq 0 ]] && nft flush ruleset
@@ -436,10 +463,11 @@ EOF
    delete_ephemeral_disks "$CONTAINERSTORAGE"
    delete_ephemeral_disks "$LOCALSTORAGE"
  
-   [[ -L /var/lib/kubelet ]] && rm -rf $(readlink /var/lib/kubelet) && rm -f /var/lib/kubelet
-   [[ -d /var/lib/kubelet ]] && rm -rf /var/lib/kubelet
-   [[ -L /var/lib/containers ]] && rm -rf $(readlink /var/lib/containers) && rm -f /var/lib/containers
-   [[ -d /var/lib/containers ]] && rm -rf /var/lib/containers
+   remove_linkdirs /var/lib/kubelet
+   remove_linkdirs /var/lib/containers
+   remove_linkdirs /var/lib/containerd
+   remove_linkdirs /run/containers
+   remove_linkdirs /run/containerd
 
    get_distro_version
    case "$DISTRO" in
@@ -465,8 +493,13 @@ EOF
                fi
             done
 	    ;;
-    "SUSE") 
-            zypper remove cri-o
+    *SUSE*) 
+            [[ -f /lib/systemd/system/containerd.service || -f /usr/lib/systemd/system/containerd.service ]] && zypper in rm containerd
+            [[ -f /lib/systemd/system/crio.service || -f /usr/lib/systemd/system/crio.service ]] && zypper in rm cri-o
+            [[ -f /lib/systemd/system/docker.service || -f /usr/lib/systemd/system/docker.service ]] && zypper in rm docker
+            zypper -n rm cri-o
+            zypper -n rm containerd
+            zypper -n rm libcontainers-common
             ;;
    esac
 
@@ -478,7 +511,7 @@ set +x
 
 modify_ssl_config()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
     if [ "$DISTRO" = "DEBIAN" -a 0$VERSION_ID -ge 10 ]
     then
        SSLCONFIG=`find /etc -name "openssl*cnf"`
@@ -510,7 +543,7 @@ set +x
 
 install_pkg_centos()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
 echo "Checking kubernetes version..."
 K8SVER=`kubelet --version | sed -n  's/.*v[0-9].\([0-9]\+\)./\1/p'`
 [[ $K8SVER -lt 170 ]] && echo "Removing kubernetes version $K8SVER on $DISTRO..." && yum remove -y kube*
@@ -544,7 +577,6 @@ EOF
       echo "Installing containerd runtime package..."
       systemctl kill -s 9 crio 2>/dev/null
       yum remove -y cri-o
-      yum remove -y cri-o-runc
       yum remove -y containers-common
       remove_crio_dirs
       echo "installing Docker ce and containerd...."
@@ -559,7 +591,7 @@ EOF
               yum install -y https://download.docker.com/linux/centos/${VERSION_ID}/x86_64/stable/Packages/$PKGTOINSTALL
            done
       fi
-      export KUBEADMARG="--cri-socket unix:///run/containerd/containerd.sock"
+      export KUBEADMARG="--cri-socket=unix:///run/containerd/containerd.sock"
       export KUBELET_EXTRA_ARGS="--cgroup-driver=systemd"
       [[ -f /etc/containerd/config.toml ]] && rm -f /etc/containerd/config.toml
       #containerd config default | sed "s|^\(\s*\)\(\[plugins.*containerd\.runtimes\.runc\.options\]\)|\1\2\n\1  SystemdCgroup = true|g" > /etc/containerd/config.toml
@@ -569,12 +601,11 @@ EOF
       systemctl kill -s 9 containerd 2>/dev/null
       yum remove -y containerd.io
       yum remove -y docker-ce
-      set_crio_cgroup_manager
       [[ -d /etc/containerd ]] && rm -rf /etc/containerd
       remove_containerd_dirs
       yum install -y cri-o 
-      yum install -y cri-o-runc
-      export KUBEADMARG="--cri-socket unix:///run/crio/crio.sock"
+      set_crio_cgroup_manager
+      export KUBEADMARG="--cri-socket=unix:///run/crio/crio.sock"
       export KUBELET_EXTRA_ARGS="--cgroup-driver=systemd"
       add_crio_netconfig
       systemctl start crio
@@ -596,31 +627,100 @@ set +x
 
 install_pkg_suse()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    zypper -n update
    zypper -n in curl socat ebtables
    zypper -n in bridge-utils
-   zypper addrepo -G https://download.opensuse.org/repositories/home:darix:apps/SLE_15_SP1/home:darix:apps.repo
-   zypper addrepo -G https://download.opensuse.org/repositories/home:RBrownSUSE:k118:v2/openSUSE_Tumbleweed/home:RBrownSUSE:k118:v2.repo
+   zypper addrepo http://download.opensuse.org/tumbleweed/repo/oss oss
    zypper ref
-   zypper -n in cri-o kubernetes-kubeadm
    zypper -n in kubernetes-kubelet
-   zypper -n remove kubernetes-client
+   zypper -n in kubernetes-kubelet-common
    zypper -n in kubernetes-client
+   zypper -n in kubernetes-client-common
+   zypper -n in kubernetes-controller-manager
+   zypper -n in kubernetes-etcd
+   zypper -n in kubernetes-kubeadm
+   zypper -n in kubernetes-proxy
+   zypper -n in kubernetes-scheduler
+   zypper -n in libcontainers-common
+
+   kubeadm 2>/dev/null 1>/dev/null
+   [[ $? -ne 0 ]] && echo "Unable to find kubeadm file.. exiting.." && exit 1
+   K8SVER=$(kubeadm version -o short | sed 's/v//g')
+   K8SVERSHORT=$(echo $K8SVER | cut -f1-2 -d.)
+
    if [ -f /etc/sysconfig/kubelet ]
    then
-      if [ `grep "KUBELET_EXTRA_ARGS" /etc/sysconfig/kubelet | wc -l` -ne 0 ]
+      if [ "$(grep KUBELET_VER /etc/sysconfig/kubelet |cut -f2 -d=)" != "$K8SVERSHORT" ]
       then
-         echo "KUBELET_EXTRA_ARGS="
+         sed -i "s/\(^KUBELET_VER=\).*/\1${K8SVERSHORT}/g" /etc/sysconfig/kubelet
       fi
    fi
-   export KUBEADMARG="--cri-socket /var/run/dockershim.sock"
+
+   if [ -d /usr/libexec/cni ]
+   then
+      [[ -d /opt/cni/bin ]] && cp /usr/libexec/cni/* /opt/cni/bin
+   fi
+   K8SVERPARAM="--kubernetes-version=${K8SVER}"
+   if [ "$CRIUSED" = "containerd" ]
+   then
+      echo "Installing containerd runtime package..."
+      systemctl kill -s 9 crio 2>/dev/null
+      systemctl disable crio
+      remove_linkdirs "/var/lib/containers"
+      echo "Linux $DISTRO prefer to run Container runtime crio rather than containerd.."
+      zypper -n rm docker 
+      zypper -n in containerd
+
+      if [ $(grep runtime-endpoint /etc/crictl.yaml  | grep containerd | wc -l) -eq 0 ]
+      then
+         sed -i "s|\(^runtime-endpoint:\).*|\1 unix:///run/containerd/containerd.sock|g" /etc/crictl.yaml
+      fi
+      if [ -f /etc/sysconfig/kubelet ]
+      then
+         if [ `grep "KUBELET_EXTRA_ARGS" /etc/sysconfig/kubelet | wc -l` -ne 0 ]
+         then
+            sed -i "s|\(^KUBELET_EXTRA_ARGS=\).*|\1\"--container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock --runtime-request-timeout=15m --cgroup-driver=systemd\"|g" /etc/sysconfig/kubelet
+         fi
+      fi
+      
+      export KUBEADMARG="--cri-socket unix:///run/containerd/containerd.sock"
+      [[ -f /etc/containerd/config.toml ]] && rm -f /etc/containerd/config.toml
+      #containerd config default | sed "s|^\(\s*\)\(\[plugins.*containerd\.runtimes\.runc\.options\]\)|\1\2\n\1  SystemdCgroup = true|g" > /etc/containerd/config.toml
+      systemctl start containerd
+   else
+      echo "Installing crio runtime package..."
+      systemctl kill -s 9 containerd 2>/dev/null
+      zypper -n rm containerd
+      [[ -d /etc/containerd ]] && rm -rf /etc/containerd
+      remove_containerd_dirs
+      [[ ! -d /usr/lib/cni ]] && mkdir -p /usr/lib/cni
+      zypper -n in cri-o
+      if [ $(grep runtime-endpoint /etc/crictl.yaml  | grep crio | wc -l) -eq 0 ]
+      then
+         sed -i "s|\(^runtime-endpoint:\).*|\1 unix:///run/crio/crio.sock|g" /etc/crictl.yaml
+      fi
+      if [ -f /etc/sysconfig/kubelet ]
+      then
+         if [ `grep "KUBELET_EXTRA_ARGS" /etc/sysconfig/kubelet | wc -l` -ne 0 ]
+         then
+            sed -i "s|\(^KUBELET_EXTRA_ARGS=\).*|\1\"--container-runtime=remote --container-runtime-endpoint=unix:///var/run/crio/crio.sock --runtime-request-timeout=15m --cgroup-driver=systemd\"|g" /etc/sysconfig/kubelet
+         fi
+      fi
+      export KUBEADMARG="--cri-socket=unix:///run/crio/crio.sock"
+      add_crio_netconfig
+      systemctl start crio
+   fi
+   systemctl daemon-reload
+
+
+
 set +x
 }
 
 install_pkg_ubuntu()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    if [ `grep "^en_US.UTF-8" /etc/locale.gen | wc -l` -eq 0 ]
    then
       echo "en_US.UTF-8 UTF-8" >>  /etc/locale.gen
@@ -669,7 +769,7 @@ EOF
       apt --yes purge containers-common
       remove_crio_dirs
       apt-get install --yes containerd.io
-      export KUBEADMARG="--cri-socket unix:///run/containerd/containerd.sock"
+      export KUBEADMARG="--cri-socket=unix:///run/containerd/containerd.sock"
       [[ -f /etc/containerd/config.toml ]] && rm -f /etc/containerd/config.toml
       #containerd config default | sed "s|^\(\s*\)\(\[plugins.*containerd\.runtimes\.runc\.options\]\)|\1\2\n\1  SystemdCgroup = true|g" > /etc/containerd/config.toml
       systemctl start containerd
@@ -680,7 +780,7 @@ EOF
       [[ -d /etc/containerd ]] && rm -rf /etc/containerd
       remove_containerd_dirs
       apt --yes install cri-o cri-o-runc
-      export KUBEADMARG="--cri-socket unix:///run/crio/crio.sock"
+      export KUBEADMARG="--cri-socket=unix:///run/crio/crio.sock"
       add_crio_netconfig
       systemctl start crio
    fi
@@ -695,7 +795,7 @@ set +x
 
 remove_linkdirs()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
   local DIRNAME="$1"
   if [ -L "$DIRNAME" ]
   then
@@ -711,7 +811,7 @@ set +x
 
 remove_crio_dirs()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
       echo "Removing crio directories..."
       [[ -d /etc/crio ]] && rm -rf /etc/crio
       [[ -d /var/run/crio ]] && rm -rf /var/run/crio
@@ -723,7 +823,7 @@ set +x
 
 remove_containerd_dirs()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
       echo "Removing containerd directories..."
       [[ -d /etc/containerd ]] && rm -rf /etc/containerd
       remove_linkdirs "/var/lib/containerd"
@@ -733,7 +833,7 @@ set +x
 
 install_pkg_debian()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    if [ `grep "^en_US.UTF-8" /etc/locale.gen | wc -l` -eq 0 ]
    then
       echo "en_US.UTF-8 UTF-8" >>  /etc/locale.gen
@@ -797,7 +897,7 @@ EOF
       apt --yes purge containers-common
       remove_crio_dirs
       apt-get install --yes containerd.io
-      export KUBEADMARG="--cri-socket unix:///run/containerd/containerd.sock"
+      export KUBEADMARG="--cri-socket=unix:///run/containerd/containerd.sock"
       [[ -f /etc/containerd/config.toml ]] && rm -f /etc/containerd/config.toml
       #containerd config default | sed "s|^\(\s*\)\(\[plugins.*containerd\.runtimes\.runc\.options\]\)|\1\2\n\1  SystemdCgroup = true|g" > /etc/containerd/config.toml
       systemctl start containerd
@@ -805,10 +905,10 @@ EOF
       echo "Installing crio runtime package..."
       systemctl kill -s 9 containerd 2>/dev/null
       apt --yes purge containerd.io
-      [[ -d /etc/containerd ]] && rm -rf /etc/containerd
       remove_containerd_dirs
       apt --yes install cri-o cri-o-runc
-      export KUBEADMARG="--cri-socket unix:///run/crio/crio.sock"
+
+      export KUBEADMARG="--cri-socket=unix:///run/crio/crio.sock"
       add_crio_netconfig
       systemctl start crio
    fi
@@ -830,7 +930,7 @@ set +x
 
 install_pkg_archlinux()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    while [[ `ps -ef | grep "pacman " | grep -v grep | wc -l` -ne 0 ]]
    do
       echo "Waiting for pacman to finish!!"
@@ -859,7 +959,7 @@ Y
       remove_crio_dirs
       pacman -Sy --noconfirm containerd
       systemctl start containerd
-      export KUBEADMARG="--cri-socket unix:///run/containerd/containerd.sock"
+      export KUBEADMARG="--cri-socket=unix:///run/containerd/containerd.sock"
    else
       echo "Installing crio runtime package..."
       systemctl kill -s 9 containerd 2>/dev/null
@@ -870,7 +970,7 @@ Y
       pacman -Sy --noconfirm cri-o crictl runc
       add_crio_netconfig
       systemctl start crio
-      export KUBEADMARG="--cri-socket unix:///run/crio/crio.sock"
+      export KUBEADMARG="--cri-socket=unix:///run/crio/crio.sock"
    fi
    pacman -Sy --noconfirm curl git sudo wget ethtool unzip conntrack-tools socat cni-plugins
    pacman -Sy --noconfirm python fakeroot binutils
@@ -888,6 +988,7 @@ set +x
 
 install_pkg()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    local PKGNAME="$1"
    get_distro_version
    case "$DISTRO" in
@@ -911,7 +1012,7 @@ install_pkg()
             apt-get update
 	    apt-get install -q -y $PKGNAME
             ;;
-    "SUSE")
+    *SUSE*)
 	    zypper -n in $PKGNAME
             ;;
 esac
@@ -919,6 +1020,7 @@ esac
 
 install_prereqs()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
 
 [[ "$(grep PREREQS $PROGRESS_FILE)" = "PREREQS" ]] && echo -e ">>>>>>>>>> All prerequisites have been installed!.. skipping...\n" && return
 [[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
@@ -945,7 +1047,7 @@ case "$DISTRO" in
     "DEBIAN")
             install_pkg_debian
             ;;
-    "SUSE")
+    *SUSE*)
             install_pkg_suse
             ;;
 esac
@@ -954,7 +1056,7 @@ if [ `grep $THEUSER /etc/passwd | wc -l` -eq 0 ]
 then
    echo "Creating user $THEUSER ..."
    [[ ! -d /home/$THEUSER ]] && mkdir -p /home/$THEUSER
-   useradd -d /home/$THEUSER $THEUSER
+   useradd -Ud /home/$THEUSER $THEUSER
 else
    echo "Checking user $THEUSER ..."
    [[ ! -d /home/$THEUSER ]] && mkdir -p /home/$THEUSER && usermod -d /home/$THEUSER $THEUSER
@@ -1040,6 +1142,7 @@ echo PREREQS >> $PROGRESS_FILE
 
 install_calico_nftables()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
     wget -O /tmp/calico.yaml $CALICO
     sed -i ':a;N;$!ba;s/# Disable IPv6 on Kubernetes.\n/# Added by setup-k8s for nfttable\n            - name: FELIX_IPTABLESBACKEND\n              value: "Auto"\n/g' /tmp/calico.yaml
     echo "Installing calico nftables"
@@ -1049,6 +1152,7 @@ install_calico_nftables()
 
 install_network()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
 echo "#########################################################################"
 echo "#####################  Installing Network plugin ########################"
 echo "#########################################################################"
@@ -1081,12 +1185,13 @@ echo "#########################################################################"
 
 get_cri_param()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    if [ -S /run/containerd/containerd.sock -a $(ps -ef |grep 'bin/containerd'|grep -v grep|wc -l) -ne 0 ]
    then
-      CRIPARAM="--cri-socket unix:///run/containerd/containerd.sock"
+      CRIPARAM="--cri-socket=unix:///run/containerd/containerd.sock"
    elif [ -S /run/crio/crio.sock -a $(ps -ef |grep 'bin/crio'|grep -v grep|wc -l) -ne 0 ]
    then
-      CRIPARAM="--cri-socket unix:///run/crio/crio.sock"
+      CRIPARAM="--cri-socket=unix:///run/crio/crio.sock"
    else
       CRIPARAM=""
    fi
@@ -1120,14 +1225,15 @@ then
 
    get_cri_param
    echo "Executing kubeadm reset ${CRIPARAM} -f"
-   kubeadm reset ${KUBEADMARG} ${CRIPARAM} -f <<EOF
+   kubeadm reset ${CRIPARAM} -f <<EOF
 y
 EOF
 
 
-   [[ -f /lib/systemd/system/containerd.service ]] && systemctl stop containerd
-   [[ -f /lib/systemd/system/crio.service ]] && systemctl stop crio
-   [[ -f /lib/systemd/system/dokcer.service ]] && systemctl stop docker
+
+   [[ -f /lib/systemd/system/containerd.service || -f /usr/lib/systemd/system/containerd.service ]] && systemctl stop containerd
+   [[ -f /lib/systemd/system/crio.service || -f /usr/lib/systemd/system/crio.service ]] && systemctl stop crio
+   [[ -f /lib/systemd/system/dokcer.service || -f /usr/lib/systemd/system/dokcer.service ]] && systemctl stop docker
 
 
    KUBEPID=`ps -eo pid,cmd | grep "bin/kubelet" | grep -v grep | awk '{print $1}'`
@@ -1135,9 +1241,9 @@ EOF
    CONTAINERDPID=$(ps -eo pid,cmd | egrep "bin/containerd|bin/crio|bin/conmon" | grep -v grep | awk '{print $1}' 2>/dev/null )
    while [ "$CONTAINERDPID" != "" ]
    do
-      CONTAINERDPID=$(ps -eo pid,cmd | egrep "bin/containerd|bin/crio|bin/conmon" | grep -v grep | awk '{print $1}' 2>/dev/null )
-      echo "Killing container runtime ..."
-      kill -9 $CONTAINERDPID 2>/dev/null 1>/dev/null
+      CONTAINERDPID=$(ps -eo pid,cmd | egrep "bin/containerd|bin/crio|bin/conmon" | grep -v grep | awk '{print $1}' | tr '\n' ' ' 2>/dev/null )
+         echo "Killing container runtime PIDS=${CONTAINERDPID}..."
+         eval "kill -9 $CONTAINERDPID" 2>/dev/null 1>/dev/null
       sleep 2
    done
 
@@ -1149,7 +1255,7 @@ EOF
    remove_mountpoints
    reset_kubeadm
    remove_linkdirs "/var/lib/kubelet"
-   [[ "$CRIUSED" = "containerd" ]] && remove_crio_dirs || remove_containerd_dirs
+   #[[ "$CRIUSED" = "containerd" ]] && remove_crio_dirs || remove_containerd_dirs
    umount /var/lib/containers/storage/overlay 2>/dev/null
 
    #Relocate kubelet
@@ -1265,12 +1371,13 @@ EOF
    fi
    systemctl restart kubelet
 
-   echo "Waiting for container runtime to stabize the process....."
+   echo "Waiting for container runtime to stabilize the process....."
    KUBEADMDEBUG=""
    [[ "$DEBUG" = "1" ]] && KUBEADMDEBUG="--v=5"
    systemctl status kubelet
    if [ "$CRIUSED" = "containerd" ]
    then
+      systemctl restart containerd
       systemctl status containerd
    else
       systemctl restart crio
@@ -1280,9 +1387,9 @@ EOF
    if [ "$(echo $MODE | grep worker | cut -f2 -d'-')" = "worker" ]
    then
       echo "Joining cluster...."
-      echo "Executing command $KUBEADM_JOIN_CMD ...................."
+      echo "Executing command $KUBEADM_JOIN_CMD $KUBEADMARG $KUBEADMDEBUG...................."
       sleep 5
-      $KUBEADM_JOIN_CMD $KUBEADMDEBUG
+      $KUBEADM_JOIN_CMD $KUBEADMARG $KUBEADMDEBUG
       [[ ! -d /home/$THEUSER/.kube ]] && mkdir -p /home/$THEUSER/.kube
       MASTERNODE=`echo $KUBEADM_JOIN_CMD | awk '{print $3}' | cut -f1 -d':'`
       scp ${MASTERNODE}:/etc/kubernetes/admin.conf /home/${THEUSER}/.kube/config
@@ -1291,9 +1398,9 @@ EOF
    elif [ "$(echo $MODE | grep master | cut -f2 -d'-')" = "master" -o "$(echo $MODE | grep single | cut -f2 -d'-')" = "single" ]
    then
       echo "Initializing master/single node...."
-      echo "Executing kubeadm init $KUBEPARAMINIT $KUBEADMARG $KUBEADMDEBUG"
+      echo "Executing kubeadm init $KUBEPARAMINIT $KUBEADMARG $K8SVERPARAM $KUBEADMDEBUG"
       [[ "$DEBUG" = "1" ]] && set -x
-      kubeadm init ${KUBEPARAMINIT} ${KUBEADMARG} $KUBEADMDEBUG
+      kubeadm init ${KUBEPARAMINIT} ${KUBEADMARG} ${K8SVERPARAM} ${KUBEADMDEBUG}
       [[ ! -d /home/$THEUSER/.kube ]] && mkdir -p /home/$THEUSER/.kube
 
       cp -f /etc/kubernetes/admin.conf /home/$THEUSER/.kube/config
@@ -1317,6 +1424,7 @@ echo "export SETUPK8S=1" >> $ENVFILE
 
 is_cluster_ready()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
 # Verify that the cluster is ready to be used.
 #
 su - $THEUSER -c "
@@ -1346,6 +1454,7 @@ done
 
 install_k8s_dashboard()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
 
 [[ "$(grep K8SDASHBOARD $PROGRESS_FILE)" = "K8SDASHBOARD" ]] && echo -e ">>>>>>>>>> Kubernetes dashboard has been installed!.. skipping...\n" && return
 
@@ -1361,6 +1470,7 @@ echo K8SDASHBOARD >> $PROGRESS_FILE
 
 kill_kubelet_and_k8s()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    echo "Checking whether kubelet is running..."
    [[ `ps -ef | grep "bin/kubelet" | grep -v grep | wc -l` -ne 0 ]] && echo "Stopping kubelet..." && systemctl stop kubelet
    MYPID=$$
@@ -1389,7 +1499,7 @@ usage_k8s()
 
 get_params()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    local OPTIND
    while getopts "m:u:l:s:k:c:r:n:o:dh" PARAM
    do
@@ -1464,7 +1574,7 @@ get_params()
         [[ ! -d /usr/local/bin ]] && mkdir -p /usr/local/bin
         [[ ! -f /usr/local/bin/weave ]] &&  curl -L git.io/weave -o /usr/local/bin/weave && chmod ugo+rx /usr/local/bin/weave
         NETPLUGIN="Weave"
-         export KUBEPARAMINIT=""
+        export KUBEPARAMINIT=""
         ;;
     *)
         CNIPLUGIN="$CALICO"
@@ -1493,7 +1603,7 @@ set +x
 
 check_mountpoint()
 {
-
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
 local STORAGE="$1"
         [[ "$STORAGE" = "" ]] && return 0
 	if [ ! -d $STORAGE ]
@@ -1524,6 +1634,7 @@ local STORAGE="$1"
 
 check_diskspace()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    if [ "$MODE" != "" -a "$MODE" != "single" ]
    then
       echo "Checking Local storage"
@@ -1537,6 +1648,7 @@ check_diskspace()
 
 remove_offending_key()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    local IPADDR="$1"
    OFFENDINGLINE=$(ssh-copy-id $IPADDR 2>&1 | grep "ERROR: Offending ECDSA key in")
    if [ "$OFFENDINGLINE" != "" ]
@@ -1554,6 +1666,7 @@ remove_offending_key()
 
 copy_public_key()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    local IPADDR="$1"
    echo "Trying to copy public key from .ssh directory..."
    echo "Trying to create trusted connection from this host $(hostname -f) to $IPADDR"
@@ -1583,7 +1696,7 @@ copy_public_key()
 
 reset_only()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    su - $THEUSER -c "kubectl get nodes 2>/dev/null 1>/dev/null"
    if [ $? -eq 0 ]
    then
@@ -1616,7 +1729,7 @@ set +x
 
 delete_ephemeral_disks()
 {
-[[ "$DEBUG" = "1" ]] && set -x
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    local THEDISK="$1"
    [[ "$THEDISK" = "" ]] && return
    if [ -d "$THEDISK" ]
@@ -1645,6 +1758,7 @@ set +x
 
 run_setup()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
   MODE="$1"
   {
 
@@ -1657,6 +1771,7 @@ run_setup()
    then
       echo "Destroying and Removing anything related to kubernetes..........."
       destroy_everything
+      echo "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
       exit 0
    fi
    
@@ -1763,7 +1878,7 @@ run_setup()
       echo -e "\n\nResetting all configuration.... Reinstall everything from scratch!...\n"
       echo -e "Shutdown kubelet and kubernetes..... "
       kill_kubelet_and_k8s
-      sed -i "/export SETUPK8S.*\|export PREREQS.*/d" $ENVFILE
+      [[ -f $ENVFILE ]] && sed -i "/export SETUPK8S.*\|export PREREQS.*/d" $ENVFILE
       unset SETUPK8S PREREQS
       
    fi
@@ -1862,6 +1977,7 @@ run_setup()
 
 create_user_pubkey()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    REGUSER="$1"
    echo "Creating public key for user $REGUSER"
    if [ "$REGUSER" != "" ]
@@ -1872,6 +1988,7 @@ create_user_pubkey()
 
 create_trusted_ssh()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    [[ ! -f ~/.ssh/id_rsa.pub ]] && echo -n " CREATING..." && ssh-keygen -f ~/.ssh/id_rsa -P "" && [[ $? -ne 0 ]] && echo -e "\nFailed to create public key for user $USER ...exiting.." && exit 1
 
    if [ "$USERNAME" = "" ]
@@ -1880,8 +1997,11 @@ create_trusted_ssh()
       USERNAME="$ANS"
       echo "export USERNAME=\"$USERNAME\"" >> $ENVFILE
    else
-      enter_input "Enter Username to connect to all worker nodes? default: $USERNAME ?"
-      [[ "$ANS" != "" ]] && USERNAME="$ANS"
+      if [ "$NOPROMPT" = "" ]
+      then
+          enter_input "Enter Username to connect to all worker nodes? default: $USERNAME ?"
+          [[ "$ANS" != "" ]] && USERNAME="$ANS"
+      fi
    fi
 
    if [ "$PASSWORD" = "" ]
@@ -1900,7 +2020,7 @@ create_trusted_ssh()
    do
       echo "Copying public key from $(hostname) to $WKNODE ..."
       sshpass -p "$PASSWORD" ssh-copy-id -o "StrictHostKeyChecking no" $USERNAME@${WKNODE}
-      [[ $? -ne 0 ]] && echo "password you typed must be wrong!!, please set the correct password and try again.. removing pssword from the file.. plese re-run..." && sed -i "/^export PASSWORD.*/d" $ENVFILE && exit 1
+      [[ $? -ne 0 ]] && echo "password you typed must be wrong!!, please set the correct password and try again.. removing pssword from the file.. plese re-run..." && [[ -f $ENVFILE ]] && sed -i "/^export PASSWORD.*/d" $ENVFILE && exit 1
       ssh  -o "StrictHostKeyChecking no" $USERNAME@${WKNODE} "
 ROOTHOME=\$(cat /etc/passwd | grep root | cut -f6 -d:)
 sudo cp ~/.ssh/authorized_keys \$ROOTHOME/.ssh
@@ -1911,6 +2031,7 @@ sudo cp ~/.ssh/authorized_keys \$ROOTHOME/.ssh
 
 check_worker_conn()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    for WKNODE in "${K8SNODES[@]}"
    do
       ssh  -o "StrictHostKeyChecking no" root@${WKNODE} "echo successfully establishing passwordless connection to root@\$(hostname)"
@@ -1920,6 +2041,7 @@ check_worker_conn()
 
 run_setup_on_worker()
 {
+[[ "$DEBUG" = "1" ]] && echo -e "\n\n\n\n" && set -x
    WORKERSTAT=/tmp/${WKNODE}-status.log
    > $WORKERSTAT
    ssh -o "StrictHostKeyChecking no" root@${WKNODE} "
@@ -1928,7 +2050,7 @@ export THEUSER=$THEUSER
 export KUBESTORAGE=$KUBESTORAGE
 export CONTAINERSTORAGE=$CONTAINERSTORAGE
 export STORAGE_CLASS=$STORAGE_CLASS
-export MODE=reset-worker
+export MODE=\$(echo $MODE | sed 's/master/worker/g')
 export CRIO_VERSION=$CRIO_VERSION
 export DEFAULT_STORAGE=$DEFAULT_STORAGE
 export DISTRO=$DISTRO
@@ -2032,14 +2154,15 @@ else
    WORKERMODE="$MODE"
 fi
 MASTERSTATUS=$(kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes -o jsonpath="{.items[?(@.metadata.name==\"${K8SMASTER}\")].status.conditions[?(@.reason=='KubeletReady')].type}" 2>/dev/null)
-[[ "$MASTERSTATUS" = "" ]] && sed -i -e "s/^export PREREQS.*\|^export SETUPK8S.*//g" $ENVFILE
+[[ "$MASTERSTATUS" = "" ]] && [[ -f $ENVFILE ]] && sed -i -e "s/^export PREREQS.*\|^export SETUPK8S.*//g" $ENVFILE
 if [ "$MODE" != "$WORKERMODE" ] 
 then
    echo "Running kubernetes setup on Master Node..."
    run_setup ${MODE} 
-   export KUBEADM_JOIN_CMD="$(cat k8sdeploy.log | egrep 'kubeadm join |--discovery-token')"
+   export KUBEADM_JOIN_CMD="$(cat k8sdeploy.log | strings | egrep 'kubeadm join |--discovery-token')"
    create_user_pubkey $THEUSER
 fi
+
 
 for WKNODE in "${K8SNODES[@]}"
 do
@@ -2077,18 +2200,19 @@ do
       fi
       CNT=$(( CNT + 1 ))
 done
+
 [[ "$MODE" = "$WORKERMODE" ]] && run_setup ${MODE} || kubectl --kubeconfig=/etc/kubernetes/admin.conf get nodes
 kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A
 
+echo "Waiting for all pods to be Running...."
+sleep 10
 MASTERNODE=$(hostname)
-for K8INFO in $(kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A --no-headers -o wide | awk '{print $2","$4","$(NF-2)}' | grep -v "Running" | grep -v "$MASTERNODE")
+for K8NODE in $(kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A -o custom-columns=NAME:.spec.nodeName,STATUS:.status.containerStatuses[*].ready | grep false | awk '{print $1}' | grep -v "$MASTERNODE" | sort | uniq | tr '\n' ' ')
 do
-  K8NODE=$(echo $K8INFO | cut -f3 -d,)
-  [[ "$KNODE" != "" ]] && echo "Rebooting node $K8NODE ..." && ssh root@$K8NODE "reboot"
-  sleep 1
+  echo "Rebooting node $K8NODE ..." && ssh root@$K8NODE "sleep 2; reboot" &
+  sleep 4
 done
 
-sleep 10
 
 MASTERSTAT=$(kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A --no-headers -o wide | awk '{print $2","$4","$(NF-2)}' | grep -v "Running" | grep "$MASTERNODE" | tail -1 | cut -f3 -d,)
 [[ -f $ENVFILE ]] && rm -f $ENVFILE
