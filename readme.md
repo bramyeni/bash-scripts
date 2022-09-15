@@ -11,10 +11,15 @@ This script does the following:
 - Prompt for master node, commad-separated worker nodes, or worker node with basename with sequential numbers
 - Automatically detects distro such as Arch linux, Debian, Ubuntu, Centos and Suse (the updated script is tested on all distros except Suse)
 
+## Location of the scripts: https://github.com/bramyeni/bramscripts/blob/main/microsoft/setup-k8sfull.sh
+
 ### Pre-requisites
 - Script must be copied to master node and must be run from master node
 - The worker nodes must all be running and the login credential password must all be the same on all those N number of worker nodes and this login must have permission to sudo to root
-- The parameter is quite similar to setup-k8stiny.sh
+- The list of parameters can be shown by using 
+<pre>
+./setup-k8sfull.sh -h
+</pre>
 
 ### Installing Kubernetes Cluster with 1 master and 100 worker nodes
 #### Assumptions: 
@@ -54,6 +59,13 @@ NOTE: the above parameter will
 - The script will detect whether master or worker nodes are strickly running cgroup v2, then it will alter the grub parameter to have backward compatibility to cgroup v1 then reboot the nodes (master node first then script will modify the grub, reboot then waiting until the worker nodes become available then resume the script)
 - Display kubectl get nodes result
 - Check if Pods stuck wit PodCreating then it will reboot the nodes to resolve the problem (this happens when switching container runtime from containerd to crio or vice versa)
+
+### Adding more nodes into Kubernetes Cluster
+<pre>
+./setup-k8sfull.sh -m add-worker
+</pre>
+the above command will prompt for additional nodes to be inlcuded in the cluster, if the nodes already part of the cluster they will be ignored by this script
+
 
 NOTE:
 There is a known issue with Kubernetes v1.24 running on cgroup v2,for some reason coredns pods stuck in Pending state and network plugin pod stuck in crashloopback. This applies to new Linux OS such as Ubuntu v22, Arch Linux, Debian 11 or later. The script will identify this issue by checking /etc/mtab and check whether cgroup and cgroup2 are both available, if not then it will add parameter systemd.unified_cgroup_hierarchy=0 on /etc/deefault/grub
