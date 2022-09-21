@@ -11,7 +11,7 @@ This script does the following:
 - Prompt for master node, commad-separated worker nodes, or worker node with basename with sequential numbers
 - Automatically detects distro such as Arch linux, Debian, Ubuntu, Centos and Suse (the updated script is tested on all distros except Suse)
 
-#### Location of the scripts (any scripts with setup-k8s*), for the fully automated script is located here: https://github.com/bramyeni/bramscripts/blob/main/microsoft/setup-k8sfull.sh
+#### Location of the scripts (any scripts with setup-k8s*), for the fully automated script is located here: [setup-k8sfull.sh] (https://github.com/bramyeni/bramscripts/blob/main/microsoft/setup-k8sfull.sh)
 
 ### Pre-requisites
 - Script must be copied to master node and must be run from master node
